@@ -15,6 +15,7 @@ import (
 var workflows = map[string]func(*client) error{
 	"register-apiary":    checkRegisterApiary,
 	"install-hive":       checkHiveInstall,
+	"change-hive-model":  checkChangeHiveModel,
 	"record-inspection":  checkRecordInspection,
 	"replace-queen":      checkReplaceQueen,
 	"advance-hive-state": checkAdvanceHiveState,

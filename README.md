@@ -45,6 +45,8 @@ go run ./cmd/check -workflow read-apiary-status
 - `POST /apiaries/{apiaryId}/hives`：输入 `id`、`model`（`langstroth`、`top_bar`、`warre`），
   成功返回 201 与状态为 `colonized` 的蜂箱。
 - `GET /hives/{hiveId}`：读回蜂箱。
+- `POST /hives/{hiveId}/model`：输入 `model`，变更已有蜂箱的箱型，返回变更前后箱型；
+  巡检与蜂王历史保留在原蜂箱上。
 - `POST /hives/{hiveId}/state`：输入 `target`，返回迁移前后的状态。
 - `POST /hives/{hiveId}/inspections`：输入 `observedAt`（可选，RFC3339）、`colonyStrength`、
   `broodPattern`、`temper`、`miteCount`、`note`，返回巡检与派生关注项。
@@ -67,6 +69,8 @@ go run ./cmd/check -workflow read-apiary-status
 
 - 蜂群状态：`colonized` 可到 `production`，`production` 与 `wintering` 可互相切换，
   三者都可到终态 `retired`；迁移到自身视为冲突。
+- 箱型变更：仅 `colonized` 与 `wintering` 状态允许变更；`production` 与 `retired` 拒绝；
+  变更到当前相同箱型视为冲突；变更保留该蜂箱全部巡检与蜂王历史。
 - 已退役蜂箱不再接受巡检与换王。
 - 同一蜂箱任意时刻最多一只 `laying` 蜂王，换王会先关闭旧记录。
 - 蜂王标记色由引入年份个位推导：`1/6` 白、`2/7` 黄、`3/8` 红、`4/9` 绿、`5/0` 蓝。
@@ -85,6 +89,7 @@ go run ./cmd/check -workflow read-apiary-status
 ```bash
 go run ./cmd/check -workflow register-apiary
 go run ./cmd/check -workflow install-hive
+go run ./cmd/check -workflow change-hive-model
 go run ./cmd/check -workflow record-inspection
 go run ./cmd/check -workflow replace-queen
 go run ./cmd/check -workflow advance-hive-state

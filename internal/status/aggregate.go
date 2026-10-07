@@ -12,6 +12,7 @@ const InspectionWindow = 14 * 24 * time.Hour
 
 type HiveSummary struct {
 	HiveID           string     `json:"hiveId"`
+	Model            string     `json:"model"`
 	State            string     `json:"state"`
 	LastInspectionAt *time.Time `json:"lastInspectionAt"`
 	LatestConcerns   []string   `json:"latestConcerns"`
@@ -49,6 +50,7 @@ func BuildReport(snapshot store.Snapshot, apiary domain.Apiary, asOf time.Time) 
 		report.StateCounts[string(hive.State)]++
 		summary := HiveSummary{
 			HiveID:           hive.ID,
+			Model:            string(hive.Model),
 			State:            string(hive.State),
 			LastInspectionAt: hive.LastInspectionAt,
 			LatestConcerns:   []string{},

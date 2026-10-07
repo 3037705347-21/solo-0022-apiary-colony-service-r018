@@ -32,6 +32,13 @@
 再校验箱型属于允许集合，并确认蜂箱编号全局唯一；成功后建立状态为「已立群」的蜂箱。
 蜂场不存在返回未找到，编号重复返回冲突。
 
+### 变更蜂箱箱型（change-hive-model）
+
+协调人向 `POST /hives/{hiveId}/model` 提交目标箱型。服务确认蜂箱存在且当前状态允许变更，
+校验目标箱型属于允许集合且与当前箱型不同，成功后在原蜂箱上写入新箱型并返回变更前后箱型，
+该蜂箱的巡检与蜂王历史全部保留。正在产蜜或已退役的蜂箱返回状态错误，目标箱型与当前
+相同返回冲突，箱型非法返回校验错误。重复或并发变更同一蜂箱只形成一个明确结果。
+
 ### 提交巡检（record-inspection）
 
 值守人向 `POST /hives/{hiveId}/inspections` 提交群势、子脾形态、性情、螨计数与备注。
@@ -53,7 +60,8 @@
 
 协调人向 `GET /apiaries/{apiaryId}/status` 查询该蜂场的状态汇总。服务在同一份快照上
 聚合蜂箱数量、各状态计数、待巡检蜂箱、有未处理关注项的蜂箱以及产卵蜂王计数，并按蜂箱
-编号稳定排序返回每个蜂箱的最新摘要。可选 `asOf` 参数使待巡检判定可复现。
+编号稳定排序返回每个蜂箱的最新摘要（含箱型、状态、最近巡检与当前蜂王）。可选 `asOf`
+参数使待巡检判定可复现。
 
 ## 状态与规则
 
@@ -63,6 +71,12 @@
 - 允许迁移：`colonized->production`、`production->wintering`、`wintering->production`、
   `colonized->retired`、`production->retired`、`wintering->retired`。
 - 不变量：`retired` 是终态；同一状态之间的迁移视为冲突；已退役蜂箱不再接受巡检与换王。
+
+### 箱型变更规则
+
+- 箱型取值 `langstroth`、`top_bar`、`warre`，与安装蜂箱共用同一允许集合。
+- 仅 `colonized` 与 `wintering` 状态允许变更箱型；`production` 与 `retired` 状态拒绝变更。
+- 变更到当前相同箱型视为冲突；变更不新建蜂箱，巡检与蜂王记录仍属于原蜂箱。
 
 ### 蜂王生命周期
 
@@ -111,6 +125,7 @@
 - `GET /healthz`：返回服务可用状态。
 - `POST /apiaries`、`GET /apiaries/{apiaryId}`：录入与读回蜂场。
 - `POST /apiaries/{apiaryId}/hives`、`GET /hives/{hiveId}`：安装与读回蜂箱。
+- `POST /hives/{hiveId}/model`：变更已有蜂箱的箱型。
 - `POST /hives/{hiveId}/inspections`、`GET /hives/{hiveId}/inspections`：提交与列出巡检。
 - `POST /hives/{hiveId}/queens`：更换蜂王。
 - `POST /hives/{hiveId}/state`：推进蜂群状态。

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 const (
@@ -182,6 +183,129 @@ func checkAdvanceHiveState(c *client) error {
 	if _, err := c.expect("POST", "/hives/hive-missing/state", map[string]any{"target": "production"}, 404,
 		`"code":"not_found"`); err != nil {
 		return err
+	}
+	return nil
+}
+
+func checkChangeHiveModel(c *client) error {
+	if err := seedDefault(c); err != nil {
+		return err
+	}
+	// 变更前留下巡检与蜂王历史，变更后必须仍属于同一只蜂箱。
+	if _, err := c.expect("POST", "/hives/hive-01/inspections", map[string]any{
+		"observedAt": "2026-04-10T09:00:00Z", "colonyStrength": 4, "broodPattern": "solid",
+		"temper": "calm", "miteCount": 12, "note": "变更前巡检",
+	}, 201, `"inspection-000001"`, `"mite_load"`); err != nil {
+		return err
+	}
+	if _, err := c.expect("POST", "/hives/hive-01/queens", map[string]any{
+		"origin": "bred", "introducedAt": "2026-04-02T08:00:00Z", "reason": "aging",
+	}, 201, `"queen-000001"`, `"state":"laying"`); err != nil {
+		return err
+	}
+	// 已立群状态允许变更箱型。
+	if _, err := c.expect("POST", "/hives/hive-01/model", map[string]any{"model": "warre"}, 200,
+		`"hiveId":"hive-01"`, `"from":"langstroth"`, `"to":"warre"`); err != nil {
+		return err
+	}
+	// 蜂箱读取与状态汇总都反映新箱型，且历史记录仍在同一蜂箱上。
+	if _, err := c.expect("GET", "/hives/hive-01", nil, 200,
+		`"model":"warre"`, `"lastInspectionAt":"2026-04-10T09:00:00Z"`, `"activeQueenId":"queen-000001"`); err != nil {
+		return err
+	}
+	if _, err := c.expect("GET", "/apiaries/apiary-north/status?asOf=2026-04-12T00:00:00Z", nil, 200,
+		`"hiveId":"hive-01"`, `"model":"warre"`, `"layingQueens":1`, `"queenId":"queen-000001"`); err != nil {
+		return err
+	}
+	if _, err := c.expect("GET", "/hives/hive-01/inspections", nil, 200,
+		`"inspection-000001"`, `"note":"变更前巡检"`); err != nil {
+		return err
+	}
+	if _, err := c.expect("GET", "/hives/hive-01/queens", nil, 200,
+		`"queen-000001"`, `"state":"laying"`); err != nil {
+		return err
+	}
+	// 重复变更到当前箱型返回冲突。
+	if _, err := c.expect("POST", "/hives/hive-01/model", map[string]any{"model": "warre"}, 409,
+		`"code":"conflict"`); err != nil {
+		return err
+	}
+	if _, err := c.expect("POST", "/hives/hive-01/model", map[string]any{"model": "dadant"}, 400,
+		`"code":"invalid_request"`); err != nil {
+		return err
+	}
+	if _, err := c.expect("POST", "/hives/hive-missing/model", map[string]any{"model": "warre"}, 404,
+		`"code":"not_found"`); err != nil {
+		return err
+	}
+	// 产蜜期不允许变更箱型。
+	if _, err := c.expect("POST", "/hives/hive-01/state", map[string]any{"target": "production"}, 200,
+		`"to":"production"`); err != nil {
+		return err
+	}
+	if _, err := c.expect("POST", "/hives/hive-01/model", map[string]any{"model": "top_bar"}, 409,
+		`"code":"invalid_state"`); err != nil {
+		return err
+	}
+	// 越冬期允许变更；并发变更同一目标箱型时恰好一个成功，其余冲突。
+	if _, err := c.expect("POST", "/hives/hive-01/state", map[string]any{"target": "wintering"}, 200,
+		`"to":"wintering"`); err != nil {
+		return err
+	}
+	if err := expectConcurrentModelChange(c, "hive-01", "langstroth", 5); err != nil {
+		return err
+	}
+	if _, err := c.expect("GET", "/hives/hive-01", nil, 200, `"model":"langstroth"`); err != nil {
+		return err
+	}
+	// 已退役蜂箱不允许变更箱型。
+	if _, err := c.expect("POST", "/hives/hive-01/state", map[string]any{"target": "retired"}, 200,
+		`"to":"retired"`); err != nil {
+		return err
+	}
+	if _, err := c.expect("POST", "/hives/hive-01/model", map[string]any{"model": "top_bar"}, 409,
+		`"code":"invalid_state"`); err != nil {
+		return err
+	}
+	return nil
+}
+
+// expectConcurrentModelChange 并发向同一蜂箱发起 count 次相同箱型变更，
+// 断言恰好一次成功、其余冲突，即重复或并发变更只形成一个明确结果。
+func expectConcurrentModelChange(c *client, hiveID, model string, count int) error {
+	type outcome struct {
+		status int
+		body   string
+	}
+	results := make(chan outcome, count)
+	var wg sync.WaitGroup
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			reply, err := c.call("POST", "/hives/"+hiveID+"/model", map[string]any{"model": model})
+			if err != nil {
+				results <- outcome{status: -1, body: err.Error()}
+				return
+			}
+			results <- outcome{status: reply.status, body: reply.text()}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	succeeded, conflicted := 0, 0
+	for result := range results {
+		switch result.status {
+		case 200:
+			succeeded++
+		case 409:
+			conflicted++
+		default:
+			return fmt.Errorf("并发变更箱型出现意外状态 %d：%s", result.status, result.body)
+		}
+	}
+	if succeeded != 1 || conflicted != count-1 {
+		return fmt.Errorf("并发变更箱型应恰好一次成功、其余冲突，实际成功 %d 次、冲突 %d 次", succeeded, conflicted)
 	}
 	return nil
 }
