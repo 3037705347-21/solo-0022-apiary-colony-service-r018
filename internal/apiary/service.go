@@ -84,3 +84,13 @@ func (s *Service) AdvanceHiveState(hiveID, target string) (domain.Transition, er
 	}
 	return s.store.AdvanceHive(hiveID, to, s.clock())
 }
+
+// ChangeHiveModel 在保留蜂箱全部巡检与蜂王历史的前提下变更箱型。
+// 是否允许变更由仓储在写锁内按当前蜂群状态判定。
+func (s *Service) ChangeHiveModel(hiveID, model string) (domain.ModelChange, error) {
+	target, err := ParseHiveModel(model)
+	if err != nil {
+		return domain.ModelChange{}, err
+	}
+	return s.store.ChangeHiveModel(hiveID, target)
+}

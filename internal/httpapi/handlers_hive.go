@@ -15,6 +15,10 @@ type advanceHiveStateRequest struct {
 	Target string `json:"target"`
 }
 
+type changeHiveModelRequest struct {
+	Model string `json:"model"`
+}
+
 func (s *Server) handleInstallHive(w http.ResponseWriter, r *http.Request) {
 	var request installHiveRequest
 	if err := decodeJSON(w, r, &request); err != nil {
@@ -53,4 +57,18 @@ func (s *Server) handleAdvanceHiveState(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, transition)
+}
+
+func (s *Server) handleChangeHiveModel(w http.ResponseWriter, r *http.Request) {
+	var request changeHiveModelRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, err)
+		return
+	}
+	change, err := s.deps.Apiary.ChangeHiveModel(r.PathValue("hiveId"), request.Model)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, change)
 }

@@ -37,6 +37,13 @@ type Transition struct {
 	To     HiveState `json:"to"`
 }
 
+// ModelChange 描述一次成功的箱型变更；巡检与蜂王记录按蜂箱编号归属，不随箱型变化。
+type ModelChange struct {
+	HiveID string    `json:"hiveId"`
+	From   HiveModel `json:"from"`
+	To     HiveModel `json:"to"`
+}
+
 var hiveTransitions = map[HiveState]map[HiveState]bool{
 	HiveColonized:  {HiveProduction: true, HiveRetired: true},
 	HiveProduction: {HiveWintering: true, HiveRetired: true},
@@ -96,4 +103,10 @@ func (h Hive) AcceptsInspection() bool {
 
 func (h Hive) AcceptsQueenChange() bool {
 	return h.State != HiveRetired
+}
+
+// AcceptsModelChange 判断当前蜂群状态是否允许变更箱型。
+// 正在产蜜与已退役的蜂箱不能变更，只允许「已立群」与「越冬期」。
+func (h Hive) AcceptsModelChange() bool {
+	return h.State == HiveColonized || h.State == HiveWintering
 }

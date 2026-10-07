@@ -89,6 +89,30 @@ func (m *Memory) AdvanceHive(hiveID string, target domain.HiveState, _ time.Time
 	return domain.Transition{HiveID: hiveID, From: from, To: target}, nil
 }
 
+// ChangeHiveModel 在同一把写锁内完成箱型读取、状态判定与写入。
+// 巡检与蜂王记录按键 hiveID 归属，原地修改箱型不触碰这些记录，
+// 因此全部历史仍属于同一只蜂箱。读-判-写在锁内串行，
+// 并发或重复变更只产生一个明确结果。
+func (m *Memory) ChangeHiveModel(hiveID string, target domain.HiveModel) (domain.ModelChange, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	hive, ok := m.hives[hiveID]
+	if !ok {
+		return domain.ModelChange{}, domain.NotFound("蜂箱", hiveID)
+	}
+	if !hive.AcceptsModelChange() {
+		return domain.ModelChange{}, domain.InvalidState(
+			"蜂箱 %q 处于 %q 状态，不允许变更箱型", hiveID, hive.State)
+	}
+	if hive.Model == target {
+		return domain.ModelChange{}, domain.InvalidState("蜂箱 %q 箱型已经是 %q", hiveID, target)
+	}
+	from := hive.Model
+	hive.Model = target
+	m.hives[hiveID] = hive
+	return domain.ModelChange{HiveID: hiveID, From: from, To: target}, nil
+}
+
 // AddInspection 分配巡检编号、写入记录，并推进蜂箱的最近巡检时间。
 // 蜂箱存在与可接受巡检的判定与写入处于同一把锁，避免退役与巡检之间的竞态。
 func (m *Memory) AddInspection(hiveID string, inspection domain.Inspection) (domain.Inspection, error) {

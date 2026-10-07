@@ -49,6 +49,15 @@
 协调人向 `POST /hives/{hiveId}/state` 提交目标状态。服务读取当前状态，按允许的迁移表
 判断迁移是否合法，合法时写入新状态并返回迁移前后状态；非法迁移返回状态错误。
 
+### 变更蜂箱箱型（change-hive-model）
+
+协调人向 `POST /hives/{hiveId}/model` 提交新箱型。服务校验箱型属于允许集合，并在同一把
+写锁内确认蜂箱存在且当前状态允许变更：只在「已立群」与「越冬期」生效，正在产蜜或已退役
+的蜂箱返回状态错误。箱型在原蜂箱记录上原地更新，蜂箱编号不变，因此该蜂箱的全部巡检与
+蜂王历史仍属于同一只蜂箱；成功后蜂箱读取与状态汇总均反映新箱型。变更为与当前相同的
+箱型返回冲突，未知蜂箱返回未找到，非法箱型返回校验错误。重复或并发变更同一只蜂箱
+串行执行，只形成一个明确结果。
+
 ### 读取蜂场状态汇总（read-apiary-status）
 
 协调人向 `GET /apiaries/{apiaryId}/status` 查询该蜂场的状态汇总。服务在同一份快照上
@@ -63,6 +72,8 @@
 - 允许迁移：`colonized->production`、`production->wintering`、`wintering->production`、
   `colonized->retired`、`production->retired`、`wintering->retired`。
 - 不变量：`retired` 是终态；同一状态之间的迁移视为冲突；已退役蜂箱不再接受巡检与换王。
+- 箱型变更：仅 `colonized` 与 `wintering` 允许变更箱型，`production` 与 `retired` 不允许；
+  变更为当前箱型视为冲突；变更不改变蜂箱编号与既有巡检、蜂王记录。
 
 ### 蜂王生命周期
 
@@ -114,6 +125,7 @@
 - `POST /hives/{hiveId}/inspections`、`GET /hives/{hiveId}/inspections`：提交与列出巡检。
 - `POST /hives/{hiveId}/queens`：更换蜂王。
 - `POST /hives/{hiveId}/state`：推进蜂群状态。
+- `POST /hives/{hiveId}/model`：变更蜂箱箱型。
 - `GET /apiaries/{apiaryId}/status`：读取蜂场状态汇总。
 
 ## 校验计划
